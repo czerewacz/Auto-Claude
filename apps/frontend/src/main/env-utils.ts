@@ -184,6 +184,32 @@ function buildPathsToAdd(
 }
 
 /**
+ * Ensure essential system paths are present in PATH
+ *
+ * On macOS/Linux, adds /usr/bin, /bin, /usr/sbin, /sbin if missing.
+ * Required for core system functionality (e.g., /usr/bin/security for Keychain access).
+ *
+ * @param currentPath - The current PATH value
+ * @param pathSeparator - Platform-specific path separator (: or ;)
+ * @param platform - The platform identifier
+ * @returns Updated PATH with essential paths included
+ */
+function ensureEssentialPaths(currentPath: string, pathSeparator: string, platform: string): string {
+  if (platform === 'win32') return currentPath;
+
+  const pathSetForEssentials = new Set(currentPath.split(pathSeparator).filter(Boolean));
+  const missingEssentials = ESSENTIAL_SYSTEM_PATHS.filter(p => !pathSetForEssentials.has(p));
+
+  if (missingEssentials.length > 0) {
+    return currentPath
+      ? `${currentPath}${pathSeparator}${missingEssentials.join(pathSeparator)}`
+      : missingEssentials.join(pathSeparator);
+  }
+
+  return currentPath;
+}
+
+/**
  * Get augmented environment with additional PATH entries
  *
  * This ensures that tools installed in common locations (like Homebrew)
@@ -201,23 +227,8 @@ export function getAugmentedEnv(additionalPaths?: string[]): Record<string, stri
   // Get all candidate paths (platform + additional)
   const candidatePaths = getExpandedPlatformPaths(additionalPaths);
 
-  // Ensure PATH has essential system directories when launched from Finder/Dock.
-  // When Electron launches from GUI (not terminal), PATH might be empty or minimal.
-  // The Claude Agent SDK needs /usr/bin/security to access macOS Keychain.
-  let currentPath = env.PATH || '';
-
-  // On macOS/Linux, ensure basic system paths are always present
-  if (platform !== 'win32') {
-    const pathSetForEssentials = new Set(currentPath.split(pathSeparator).filter(Boolean));
-    const missingEssentials = ESSENTIAL_SYSTEM_PATHS.filter(p => !pathSetForEssentials.has(p));
-
-    if (missingEssentials.length > 0) {
-      // Append essential paths if missing (append, not prepend, to respect user's PATH)
-      currentPath = currentPath
-        ? `${currentPath}${pathSeparator}${missingEssentials.join(pathSeparator)}`
-        : missingEssentials.join(pathSeparator);
-    }
-  }
+  // Ensure essential system paths are present (for macOS Keychain access)
+  const currentPath = ensureEssentialPaths(env.PATH || '', pathSeparator, platform);
 
   // Collect paths to add (only if they exist and aren't already in PATH)
   const currentPathSet = new Set(currentPath.split(pathSeparator).filter(Boolean));
@@ -361,18 +372,7 @@ export async function getAugmentedEnvAsync(additionalPaths?: string[]): Promise<
   const candidatePaths = getExpandedPlatformPaths(additionalPaths);
 
   // Ensure essential system paths are present (for macOS Keychain access)
-  let currentPath = env.PATH || '';
-
-  if (platform !== 'win32') {
-    const pathSetForEssentials = new Set(currentPath.split(pathSeparator).filter(Boolean));
-    const missingEssentials = ESSENTIAL_SYSTEM_PATHS.filter(p => !pathSetForEssentials.has(p));
-
-    if (missingEssentials.length > 0) {
-      currentPath = currentPath
-        ? `${currentPath}${pathSeparator}${missingEssentials.join(pathSeparator)}`
-        : missingEssentials.join(pathSeparator);
-    }
-  }
+  const currentPath = ensureEssentialPaths(env.PATH || '', pathSeparator, platform);
 
   // Collect paths to add (only if they exist and aren't already in PATH)
   const currentPathSet = new Set(currentPath.split(pathSeparator).filter(Boolean));
